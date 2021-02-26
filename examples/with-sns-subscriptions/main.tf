@@ -1,7 +1,3 @@
-provider "aws" {
-  region = "eu-west-1"
-}
-
 resource "aws_sns_topic" "topic_1" {
   name = "example-sns-topic-1"
 }
@@ -41,8 +37,7 @@ module "lambda" {
     }
 
     topic_2 = {
-      // optionally overwrite endpoint in case an alias should be used for
-      // the SNS subscription
+      // optionally overwrite `endpoint` in case an alias should be used for the SNS subscription
       endpoint  = aws_lambda_alias.example.arn
       topic_arn = aws_sns_topic.topic_2.arn
     }

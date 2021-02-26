@@ -1,14 +1,15 @@
 resource "aws_lambda_permission" "event_bridge" {
-  for_each = var.event_bridge_rules
+  for_each = var.cloudwatch_event_rules
 
   action        = "lambda:InvokeFunction"
   function_name = module.lambda.function_name
   principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.lambda[each.key].arn
+  qualifier     = contains(keys(each.value), "arn") ? trimprefix(lookup(each.value, "arn"), "${module.lambda.arn}:") : null
+  source_arn    = aws_cloudwatch_event_rule.event_bridge[each.key].arn
 }
 
-resource "aws_cloudwatch_event_rule" "lambda" {
-  for_each = var.event_bridge_rules
+resource "aws_cloudwatch_event_rule" "event_bridge" {
+  for_each = var.cloudwatch_event_rules
 
   description         = lookup(each.value, "description", null)
   event_bus_name      = lookup(each.value, "event_bus_name", null)
@@ -22,8 +23,8 @@ resource "aws_cloudwatch_event_rule" "lambda" {
 }
 
 resource "aws_cloudwatch_event_target" "lambda" {
-  for_each = var.event_bridge_rules
+  for_each = var.cloudwatch_event_rules
 
-  arn  = module.lambda.arn
-  rule = aws_cloudwatch_event_rule.lambda[each.key].name
+  arn  = lookup(each.value, "arn", module.lambda.arn)
+  rule = aws_cloudwatch_event_rule.event_bridge[each.key].name
 }

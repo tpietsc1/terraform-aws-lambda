@@ -5,7 +5,7 @@
 Terraform module to create AWS [Lambda](https://www.terraform.io/docs/providers/aws/r/lambda_function.html) and accompanying resources for an efficient and secure
 development of Lambda functions like:
 
-- configurable trigger for DynamodDb, EventBridge, Kinesis, SNS and SQS
+- inline configuration for DynamodDb, EventBridge (CloudWatch Events), Kinesis, SNS or SQS trigger including required permissions
 - IAM role with permissions following the [principle of least privilege](https://en.wikipedia.org/wiki/Principle_of_least_privilege)
 - CloudWatch Logs configuration
 - blue/green deployments with AWS CodePipeline and CodeDeploy
@@ -15,7 +15,7 @@ development of Lambda functions like:
 - IAM role with permissions following the [principle of least privilege](https://en.wikipedia.org/wiki/Principle_of_least_privilege)
 - [Event Source Mappings](https://www.terraform.io/docs/providers/aws/r/lambda_event_source_mapping.html) for DynamoDb, Kinesis and SQS triggers including required permissions (see [examples](examples/with-event-source-mappings)).
 - [SNS Topic Subscriptions](https://www.terraform.io/docs/providers/aws/r/sns_topic_subscription.html) for SNS triggers including required [Lambda permissions](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_permission) (see [example](examples/with-sns-subscriptions))
-- [CloudWatch Event Rules](https://www.terraform.io/docs/providers/aws/r/cloudwatch_event_rule.html) to trigger by [EventBridge](https://docs.aws.amazon.com/eventbridge/latest/userguide/what-is-amazon-eventbridge.html) event patterns or on a regular, scheduled basis (see [example](examples/example-with-cloudwatch-event))
+- [CloudWatch Event Rules](https://www.terraform.io/docs/providers/aws/r/cloudwatch_event_rule.html) to trigger by [EventBridge](https://docs.aws.amazon.com/eventbridge/latest/userguide/what-is-amazon-eventbridge.html) event patterns or on a regular, scheduled basis (see [example](examples/with-cloudwatch-event-rules))
 - IAM permissions for read access to parameters from [AWS Systems Manager Parameter Store](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-paramstore.html)
 - [CloudWatch](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/Working-with-log-groups-and-streams.html) Log group configuration including retention time and [subscription filters](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/SubscriptionFilters.html) with required permissions to stream logs via another Lambda (e.g. to Elasticsearch)
 - add-on [module](modules/deployment) for controlled blue/green deployments using AWS [CodePipeline](https://docs.aws.amazon.com/codepipeline/latest/userguide/welcome.html)
@@ -66,6 +66,30 @@ module "lambda" {
   function_name = "my-function"
   image_uri     = "111111111111.dkr.ecr.eu-west-1.amazonaws.com/my-image"
   package_type  = "Image"
+}
+```
+
+**with EventBridge (CloudWatch Events) rules**
+
+```hcl
+module "lambda" {
+  // see above
+
+  cloudwatch_event_rules = {
+    scheduled = {
+      schedule_expression = "rate(1 minute)"
+    }
+
+    pattern = {
+      event_pattern = <<PATTERN
+      {
+        "detail-type": [
+          "AWS Console Sign In via CloudTrail"
+        ]
+      }
+      PATTERN
+    }
+  }
 }
 ```
 
@@ -138,8 +162,8 @@ CodeDeploy deployments as part of an AWS [CodePipeline](https://docs.aws.amazon.
 
 - [container-image](examples/container-image)
 - [deployment](examples/deployment)
-- [example-with-cloudwatch-event](examples/example-with-cloudwatch-event)
 - [simple](examples/simple)
+- [with-cloudwatch-event-rules](examples/with-cloudwatch-event-rules)
 - [with-event-source-mappings](examples/with-event-source-mappings)
 - [with-sns-subscriptions](examples/with-sns-subscriptions)
 
@@ -176,10 +200,11 @@ MINOR, and PATCH versions on each release to indicate any incompatibilities.
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
+| cloudwatch\_event\_rules | Creates EventBridge (CloudWatch Events) rules invoking your Lambda function. Required Lambda invocation permissions will be generated. | `map(any)` | `{}` | no |
 | description | Description of what your Lambda Function does. | `string` | `""` | no |
 | environment | Environment (e.g. env variables) configuration for the Lambda function enable you to dynamically pass settings to your function code and libraries | <pre>object({<br>    variables = map(string)<br>  })</pre> | `null` | no |
-| event | Event source configuration which triggers the Lambda function. Supported events: cloudwatch-scheduled-event, dynamodb (deprecated - use event\_source\_mappings), kinesis (deprecated - use event\_source\_mappings), s3, sns (deprecated - use sns\_subscriptions), sqs (deprecated - use event\_source\_mappings) | `map(string)` | `{}` | no |
-| event\_source\_mappings | Event source mappings to allow the Lambda function to get events from Kinesis, DynamoDB and SQS. The IAM role of this Lambda function will be enhanced with necessary minimum permissions to get those events. | `map(any)` | `{}` | no |
+| event | (deprecated - use `cloudwatch_event_rules` [EventBridge/CloudWatch Events], `event_source_mappings` [DynamoDb, Kinesis, SQS] or `sns_subscriptions` [SNS] instead) Event source configuration which triggers the Lambda function. Supported events: cloudwatch-scheduled-event, dynamodb, kinesis, s3, sns, sqs | `map(string)` | `{}` | no |
+| event\_source\_mappings | Creates event source mappings to allow the Lambda function to get events from Kinesis, DynamoDB and SQS. The IAM role of this Lambda function will be enhanced with necessary minimum permissions to get those events. | `map(any)` | `{}` | no |
 | filename | The path to the function's deployment package within the local filesystem. If defined, The s3\_-prefixed options and image\_uri cannot be used. | `string` | `null` | no |
 | function\_name | A unique name for your Lambda Function. | `string` | n/a | yes |
 | handler | The function entrypoint in your code. | `string` | `""` | no |
@@ -199,7 +224,7 @@ MINOR, and PATCH versions on each release to indicate any incompatibilities.
 | s3\_bucket | The S3 bucket location containing the function's deployment package. Conflicts with filename and image\_uri. This bucket must reside in the same AWS region where you are creating the Lambda function. | `string` | `null` | no |
 | s3\_key | The S3 key of an object containing the function's deployment package. Conflicts with filename and image\_uri. | `string` | `null` | no |
 | s3\_object\_version | The object version containing the function's deployment package. Conflicts with filename and image\_uri. | `string` | `null` | no |
-| sns\_subscriptions | Subscriptions to SNS topics which trigger your Lambda function. Lambda invocation permissions will be generated. | `map(any)` | `{}` | no |
+| sns\_subscriptions | Creates subscriptions to SNS topics which trigger your Lambda function. Required Lambda invocation permissions will be generated. | `map(any)` | `{}` | no |
 | source\_code\_hash | Used to trigger updates. Must be set to a base64-encoded SHA256 hash of the package file specified with either filename or s3\_key. The usual way to set this is filebase64sha256('file.zip') where 'file.zip' is the local filename of the lambda function source archive. | `string` | `""` | no |
 | ssm | List of AWS Systems Manager Parameter Store parameter names. The IAM role of this Lambda function will be enhanced with read permissions for those parameters. Parameters must start with a forward slash and can be encrypted with the default KMS key. | <pre>object({<br>    parameter_names = list(string)<br>  })</pre> | `null` | no |
 | ssm\_parameter\_names | DEPRECATED: use `ssm` object instead. This variable will be removed in version 6 of this module. (List of AWS Systems Manager Parameter Store parameters this Lambda will have access to. In order to decrypt secure parameters, a kms\_key\_arn needs to be provided as well.) | `list` | `[]` | no |
